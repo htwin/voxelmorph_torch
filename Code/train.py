@@ -18,9 +18,15 @@ import torch
 from torch.optim import Adam
 
 # internal imports
-from model import cvpr2018_net
+from model import cvpr2018_net,SpatialTransformer
 import datagenerators
 import losses
+
+from Funcations import dice
+
+from tensorboardX import SummaryWriter
+# 创建一个TensorBoard的SummaryWriter对象
+writer = SummaryWriter('Log')
 
 
 def train(gpu,
@@ -85,16 +91,12 @@ def train(gpu,
     # set up atlas tensor
     input_fixed  = torch.from_numpy(atlas_vol).to(device).float()[np.newaxis, np.newaxis, ...,]
 
+    # Use this to warp segments
+    trf = SpatialTransformer(atlas_vol.shape, mode='nearest')
+    trf.to(device)
+
     # Training loop.
     for i in range(n_iter):
-
-        # Save model checkpoint
-        if i % n_save_iter == 0:
-            if not os.path.exists(model_dir):
-                os.makedirs(model_dir)
-            save_file_name = os.path.join(model_dir, '%d.ckpt' % i)
-            torch.save(model.state_dict(), save_file_name)
-
         # Generate the moving images and convert them to tensors.
         moving_image = next(train_example_gen)[0]
         input_moving = torch.from_numpy(moving_image).to(device).float()
@@ -107,7 +109,65 @@ def train(gpu,
         grad_loss = grad_loss_fn(flow)
         loss = recon_loss + reg_param * grad_loss
 
-        print("%d,%f,%f,%f" % (i, loss.item(), recon_loss.item(), grad_loss.item()), flush=True)
+        print("%d,loss  %f, sim_loss  %f, grad_loss %f" % (i, loss.item(), recon_loss.item(), grad_loss.item()),flush=True)
+
+
+
+
+        # 记录损失
+        writer.add_scalar('loss', loss.item(), i)
+        # 记录相似性损失
+        writer.add_scalar('sim_loss', recon_loss.item(), i)
+        # 记录平滑损失
+        writer.add_scalar('grad_loss', grad_loss.item(), i)
+
+        # Save model checkpoint
+        if i % n_save_iter == 0:
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            save_file_name = os.path.join(model_dir, '%d.ckpt' % i)
+            torch.save(model.state_dict(), save_file_name)
+
+            # 校验
+            validation = False
+            if validation:
+                # 选择第255号文件作为固定图像
+                f_img = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[255]
+
+                f_label = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_seg35.nii.gz'))[255]
+                f_label = datagenerators.load_volfile(f_label)
+
+                # 256-261 作为验证集
+                valid_file_lst = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[256:261]
+                print("\nValiding...")
+
+                for file in valid_file_lst:
+
+                    # 移动图像
+                    m_img = datagenerators.load_volfile(file)
+                    m_img = torch.from_numpy(m_img).to(device).float()[np.newaxis,np.newaxis,...]
+
+                    # 固定图像
+                    f_img = datagenerators.load_volfile(f_img)
+                    f_img = torch.from_numpy(f_img).to(device).float()[np.newaxis,np.newaxis,...]
+
+                    # 得到配准后的图像和形变场
+                    moved,flow = model(m_img,f_img)
+
+                    # 移动图像的label
+                    filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
+                    label_file = glob.glob(os.path.join(data_dir, filename_pre, "aligned_seg35.nii.gz"))[0]
+                    moving_seg = datagenerators.load_volfile(label_file)
+                    moving_seg = torch.from_numpy(moving_seg).to(device).float()[np.newaxis, np.newaxis, ...]
+                    warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
+
+                    # 计算dice
+                    good_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,25,
+                                   26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
+                    vals, labels = dice(warp_seg, f_label, labels=good_labels, nargout=2)
+                    print("dice:", np.mean(vals))
+
+
 
         # Backwards and optimize
         opt.zero_grad()
@@ -128,13 +188,13 @@ if __name__ == "__main__":
 
     parser.add_argument("--data_dir",
                         type=str,
-                        default='D:/code/cv/datasets/original/neurite-oasis.v1.0',
+                        default='../Datasets/neurite-oasis.v1.0',
                         help="data folder with training vols")
 
     parser.add_argument("--atlas_file",
                         type=str,
                         dest="atlas_file",
-                        default='D:/code/cv/datasets/original/neurite-oasis.v1.0/OASIS_OAS1_0001_MR1/aligned_norm.nii.gz',
+                        default='../Datasets/neurite-oasis.v1.0/OASIS_OAS1_0001_MR1/aligned_norm.nii.gz',
                         help="gpu id number")
 
     parser.add_argument("--lr",
@@ -146,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_iter",
                         type=int,
                         dest="n_iter",
-                        default=150000,
+                        default=1000,
                         help="number of iterations")
 
     parser.add_argument("--data_loss",

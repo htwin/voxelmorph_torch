@@ -6,13 +6,17 @@ import datagenerators
 from model import cvpr2018_net, SpatialTransformer
 from Funcations import save_moved_img
 import torch
+import nibabel as nib
 def register(moving,fixed,model_path,moved_path,vm):
-    device = "cuda"
-    # 加载固定图像
-    fixed_vol_file = datagenerators.load_volfile(fixed)
-    vol_size = fixed_vol_file.shape
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
 
-    fixed_image = torch.from_numpy(fixed_vol_file).to(device).float()[np.newaxis,np.newaxis,...]
+    # 加载固定图像
+    fixed_vol_data = datagenerators.load_volfile(fixed)
+    vol_size = fixed_vol_data.shape
+
+    fixed_image = torch.from_numpy(fixed_vol_data).to(device).float()[np.newaxis,np.newaxis,...]
 
     #加载移动图像
     moving_image = datagenerators.load_volfile(moving)
@@ -32,6 +36,8 @@ def register(moving,fixed,model_path,moved_path,vm):
 
     moved,flow = model(moving_image,fixed_image)
 
+    # 加载的原始对象(保存配准图像时，需要使用它的空间信息，确保配准图像空间信息和固定图像一致)
+    fixed_vol_file = nib.load(fixed)
     save_moved_img(moved,fixed_vol_file,moved_path)
 
 
