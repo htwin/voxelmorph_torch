@@ -121,6 +121,11 @@ def train(gpu,
         # 记录平滑损失
         writer.add_scalar('grad_loss', grad_loss.item(), i)
 
+        # Backwards and optimize
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
         # Save model checkpoint
         if i % n_save_iter == 0:
             if not os.path.exists(model_dir):
@@ -129,11 +134,16 @@ def train(gpu,
             torch.save(model.state_dict(), save_file_name)
 
             # 校验
-            validation = False
+            validation = True
+            # 释放显存
+            torch.cuda.empty_cache()
             if validation:
                 # 选择第255号文件作为固定图像
                 f_img = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[255]
+                f_img = datagenerators.load_volfile(f_img)
+                f_img = torch.from_numpy(f_img).to(device).float()[np.newaxis, np.newaxis, ...]
 
+                # 固定图像label
                 f_label = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_seg35.nii.gz'))[255]
                 f_label = datagenerators.load_volfile(f_label)
 
@@ -142,17 +152,12 @@ def train(gpu,
                 print("\nValiding...")
 
                 for file in valid_file_lst:
-
                     # 移动图像
                     m_img = datagenerators.load_volfile(file)
-                    m_img = torch.from_numpy(m_img).to(device).float()[np.newaxis,np.newaxis,...]
-
-                    # 固定图像
-                    f_img = datagenerators.load_volfile(f_img)
-                    f_img = torch.from_numpy(f_img).to(device).float()[np.newaxis,np.newaxis,...]
+                    m_img = torch.from_numpy(m_img).to(device).float()[np.newaxis, np.newaxis, ...]
 
                     # 得到配准后的图像和形变场
-                    moved,flow = model(m_img,f_img)
+                    moved, flow = model(m_img, f_img)
 
                     # 移动图像的label
                     filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
@@ -162,17 +167,15 @@ def train(gpu,
                     warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
 
                     # 计算dice
-                    good_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,25,
+                    good_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                                   24, 25,
                                    26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
                     vals, labels = dice(warp_seg, f_label, labels=good_labels, nargout=2)
                     print("dice:", np.mean(vals))
 
 
 
-        # Backwards and optimize
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
+
 
 
 if __name__ == "__main__":
