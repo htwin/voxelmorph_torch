@@ -40,9 +40,11 @@ def test(gpu,
         model：vm1或者vm2 默认 vm2
         init_model_file：加载的模型文件
     """
+    device = 'cpu'
+    if torch.cuda.is_available():
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu
+        device = "cuda"
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = gpu
-    device = "cuda"
     # 加载固定图像
     atlas_vol = datagenerators.load_volfile(atlas_file)
     input_fixed = torch.from_numpy(atlas_vol).to(device).float()[np.newaxis, np.newaxis, ...]
