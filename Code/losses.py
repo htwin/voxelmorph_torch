@@ -42,7 +42,6 @@ def ncc_loss(I, J, win=None):
     calculate the normalize cross correlation between I and J
     assumes I, J are sized [batch_size, *vol_shape, nb_feats]
     """
-
     ndims = len(list(I.size())) - 2
     assert ndims in [1, 2, 3], "volumes should be 1 to 3 dimensions. found: %d" % ndims
 

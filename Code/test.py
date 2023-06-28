@@ -72,29 +72,28 @@ def test(gpu,
     # Use this to warp segments
     trf = SpatialTransformer(atlas_vol.shape, mode='nearest')
     trf.to(device)
+    with torch.no_grad():
+        for file in test_file_lst:
+            # moving图像
+            input_moving = datagenerators.load_volfile(file)
+            input_moving = torch.from_numpy(input_moving).to(device).float()[np.newaxis, np.newaxis, ...]
 
-    for file in test_file_lst:
-        # moving图像
-        input_moving = datagenerators.load_volfile(file)
-        input_moving = torch.from_numpy(input_moving).to(device).float()[np.newaxis, np.newaxis, ...]
+            # 得到配准后的图像和形变场
+            warp, flow = model(input_moving, input_fixed)
 
-        # 得到配准后的图像和形变场
-        warp, flow = model(input_moving, input_fixed)
-
-        # 读入moving图像对应的label
-        filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
-        label_file = glob.glob(os.path.join(label_dir, filename_pre, "aligned_seg35.nii.gz"))[0]
-        moving_seg = datagenerators.load_volfile(label_file)
-        moving_seg = torch.from_numpy(moving_seg).to(device).float()[np.newaxis, np.newaxis, ...]
-        warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
-        # 计算dice
-        vals, labels = dice(warp_seg, fixed_label, labels=good_labels, nargout=2)
-        #dice_vals[:, k] = vals
-        #print(np.mean(dice_vals[:, k]))
-        print("moving_image:"+file)
-        print("fixed_image:"+atlas_file)
-        print("dice:",np.mean(vals))
-
+            # 读入moving图像对应的label
+            filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
+            label_file = glob.glob(os.path.join(label_dir, filename_pre, "aligned_seg35.nii.gz"))[0]
+            moving_seg = datagenerators.load_volfile(label_file)
+            moving_seg = torch.from_numpy(moving_seg).to(device).float()[np.newaxis, np.newaxis, ...]
+            warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
+            # 计算dice
+            vals, labels = dice(warp_seg, fixed_label, labels=good_labels, nargout=2)
+            #dice_vals[:, k] = vals
+            #print(np.mean(dice_vals[:, k]))
+            print("moving_image:"+file)
+            print("fixed_image:"+atlas_file)
+            print("dice:",np.mean(vals))
         #return
 
 if __name__ == "__main__":

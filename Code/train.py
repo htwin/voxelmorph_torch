@@ -94,9 +94,17 @@ def train(gpu,
     # Use this to warp segments
     trf = SpatialTransformer(atlas_vol.shape, mode='nearest')
     trf.to(device)
+    step = 0
+    # 从训练好的一个模型开始训练
+    load_model = False
+    if load_model is True:
+        model_path = "../Models/15000.ckpt"
+        print("Loading weight: ", model_path)
+        step = 15000
+        model.load_state_dict(torch.load(model_path))
 
     # Training loop.
-    for i in range(n_iter):
+    for i in range(step ,n_iter):
         # Generate the moving images and convert them to tensors.
         moving_image = next(train_example_gen)[0]
         input_moving = torch.from_numpy(moving_image).to(device).float()
@@ -110,9 +118,6 @@ def train(gpu,
         loss = recon_loss + reg_param * grad_loss
 
         print("%d,loss  %f, sim_loss  %f, grad_loss %f" % (i, loss.item(), recon_loss.item(), grad_loss.item()),flush=True)
-
-
-
 
         # 记录损失
         writer.add_scalar('loss', loss.item(), i)
@@ -138,40 +143,41 @@ def train(gpu,
             # 释放显存
             torch.cuda.empty_cache()
             if validation:
-                # 选择第255号文件作为固定图像
-                f_img = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[255]
-                f_img = datagenerators.load_volfile(f_img)
-                f_img = torch.from_numpy(f_img).to(device).float()[np.newaxis, np.newaxis, ...]
+                with torch.no_grad():
+                    # 选择第255号文件作为固定图像
+                    f_img = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[255]
+                    f_img = datagenerators.load_volfile(f_img)
+                    f_img = torch.from_numpy(f_img).to(device).float()[np.newaxis, np.newaxis, ...]
 
-                # 固定图像label
-                f_label = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_seg35.nii.gz'))[255]
-                f_label = datagenerators.load_volfile(f_label)
+                    # 固定图像label
+                    f_label = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_seg35.nii.gz'))[255]
+                    f_label = datagenerators.load_volfile(f_label)
 
-                # 256-261 作为验证集
-                valid_file_lst = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[256:261]
-                print("\nValiding...")
+                    # 256-261 作为验证集
+                    valid_file_lst = sorted(glob.glob(data_dir + '/OASIS_OAS1_*_MR1/aligned_norm.nii.gz'))[256:261]
+                    print("\nValiding...")
 
-                for file in valid_file_lst:
-                    # 移动图像
-                    m_img = datagenerators.load_volfile(file)
-                    m_img = torch.from_numpy(m_img).to(device).float()[np.newaxis, np.newaxis, ...]
+                    for file in valid_file_lst:
+                        # 移动图像
+                        m_img = datagenerators.load_volfile(file)
+                        m_img = torch.from_numpy(m_img).to(device).float()[np.newaxis, np.newaxis, ...]
 
-                    # 得到配准后的图像和形变场
-                    moved, flow = model(m_img, f_img)
+                        # 得到配准后的图像和形变场
+                        moved, flow = model(m_img, f_img)
 
-                    # 移动图像的label
-                    filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
-                    label_file = glob.glob(os.path.join(data_dir, filename_pre, "aligned_seg35.nii.gz"))[0]
-                    moving_seg = datagenerators.load_volfile(label_file)
-                    moving_seg = torch.from_numpy(moving_seg).to(device).float()[np.newaxis, np.newaxis, ...]
-                    warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
+                        # 移动图像的label
+                        filename_pre = os.path.split(file)[0].split(os.path.sep)[-1]
+                        label_file = glob.glob(os.path.join(data_dir, filename_pre, "aligned_seg35.nii.gz"))[0]
+                        moving_seg = datagenerators.load_volfile(label_file)
+                        moving_seg = torch.from_numpy(moving_seg).to(device).float()[np.newaxis, np.newaxis, ...]
+                        warp_seg = trf(moving_seg, flow).detach().cpu().numpy()
 
-                    # 计算dice
-                    good_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                                   24, 25,
-                                   26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
-                    vals, labels = dice(warp_seg, f_label, labels=good_labels, nargout=2)
-                    print("dice:", np.mean(vals))
+                        # 计算dice
+                        good_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                                       24, 25,
+                                       26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
+                        vals, labels = dice(warp_seg, f_label, labels=good_labels, nargout=2)
+                        print("dice:", np.mean(vals))
 
 
 
@@ -209,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_iter",
                         type=int,
                         dest="n_iter",
-                        default=1000,
+                        default=15001,
                         help="number of iterations")
 
     parser.add_argument("--data_loss",
