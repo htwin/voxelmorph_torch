@@ -51,7 +51,7 @@ python ./register.py
 
 ## 测试
 
-## 自定义参数运行
+### 自定义参数运行
 
 ```python
 python test.py
@@ -67,9 +67,7 @@ python test.py
 - --test_dir 测试文件夹 默认为Testfiles文件夹
 - --label_dir 标签文件夹 默认为Testfiles 文件夹
 
-
-
-## 直接运行
+### 直接运行
 
 同上，进入Code文件夹，直接运行test.py,默认会使用Testfiles文件夹中的三个测试文件进行测试运行。
 
@@ -79,7 +77,7 @@ python test.py
 
 ## 训练
 
-## 自定义参数运行
+### 自定义参数运行
 
 ```python
 python tain.py 
@@ -98,6 +96,6 @@ python tain.py
 - --n_save_iter 默认保存频率 默认500 (训练500轮保存一次)
 - --model_dir 模型文件保存的路径
 
-## 直接运行
+### 直接运行
 
 同上，数据集整理好之后，直接运行train.py 文件，数据集默认会加载Datasets中的数据，如果数据集存放位置不同，可自己修改代码。
